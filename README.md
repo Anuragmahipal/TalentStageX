@@ -212,13 +212,6 @@ _All screens must be responsive and WCAG-compliant (alt text, keyboard nav, cont
 
 _Pass criteria:_ All flows work end-to-end, with correct data, no unhandled errors, and UI matches wireframes.
 
-# Roadmap & Milestones  
-
-- **MVP (Weeks 1–6, 4 devs):** Core marketplace: User auth, profile, portfolio, project posting, proposals, contracts, basic escrow, reviews.  No community or AI yet. Estimated 12 person-weeks.  
-- **v1 (Weeks 7–12, +1 AI Engineer, +1 UX):** Add AI features: Freelancer Match (simple ML), Proposal Scoring; Skill Tests; Profile completeness. Community forum MVP.  Subscribe workflow and payments UI.  10 person-weeks.  
-- **v2 (Weeks 13–18):** Polish AI (improve models), Project Scoping Assistant, Portfolio Reviewer AI. Add mentorship booking. Mobile responsiveness, performance tuning. Robust testing.  8 person-weeks.  
-- **Milestones:** Weekly sprints. Roles: Backend (2), Frontend (2), AI/ML (1), QA (1), PM/UX (1).  Total ~30 person-weeks.
-
 **Appendix (Examples):**  
 - *SQL Query:* Find top-rated freelancers for “React”:  
 ```sql

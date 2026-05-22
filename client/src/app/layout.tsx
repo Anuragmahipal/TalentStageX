@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import Sidebar from "@/components/Sidebar";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -30,7 +31,19 @@ export default function RootLayout({
       lang="en"
       className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable)}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <header className="border-b border-border bg-card/50">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div className="font-heading text-lg font-semibold">TalentStage</div>
+          </div>
+        </header>
+        <div className="flex">
+          <Sidebar />
+          <main className="flex-1">
+            {children}
+          </main>
+        </div>
+      </body>
     </html>
   );
 }
