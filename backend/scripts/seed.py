@@ -2,6 +2,13 @@
 Run with: python -m backend.scripts.seed (from repo root) or `python backend/scripts/seed.py`
 """
 import asyncio
+import sys
+from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 from src.db import engine, AsyncSessionLocal
 from src.db_models import User, Profile, Project, Proposal
 
@@ -59,7 +66,7 @@ async def run():
         res = await db.execute(select(Project).where(Project.client_id == u2.id))
         project = res.scalar_one_or_none()
         if not project:
-            project = Project(client_id=u2.id, title="Landing page refresh", description="Modernize landing page using Next.js", budget_min=500, budget_max=1500)
+            project = Project(client_id=u2.id, title="Landing page refresh", description="Modernize landing page using Next.js", skills='["Next.js", "React", "Tailwind"]', budget_min=500, budget_max=1500)
             db.add(project)
             await db.commit()
             await db.refresh(project)

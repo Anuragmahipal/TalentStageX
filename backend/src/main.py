@@ -10,8 +10,8 @@ app = FastAPI(title="TalentStageX API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -25,5 +25,10 @@ async def on_startup():
     await init_db()
 
 @app.get("/")
-def root():
+async def root():
+    return {"service": "TalentStageX API", "docs": "/docs", "health": "/api/health"}
+
+
+@app.get("/api/health")
+def health():
     return {"status": "ok", "service": "TalentStageX API"}

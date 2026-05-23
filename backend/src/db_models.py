@@ -33,6 +33,7 @@ class Project(Base):
     client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String(256), nullable=False)
     description = Column(Text, nullable=True)
+    skills = Column(Text, nullable=True)
     budget_min = Column(Integer, nullable=True)
     budget_max = Column(Integer, nullable=True)
     status = Column(String(32), default="open")
