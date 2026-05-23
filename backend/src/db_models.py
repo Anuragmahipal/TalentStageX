@@ -21,5 +21,35 @@ class Profile(Base):
     title = Column(String(256), nullable=True)
     bio = Column(Text, nullable=True)
     hourly_rate = Column(Float, nullable=True)
+    completeness_pct = Column(Integer, default=0)
 
     user = relationship("User", back_populates="profile")
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    budget_min = Column(Integer, nullable=True)
+    budget_max = Column(Integer, nullable=True)
+    status = Column(String(32), default="open")
+
+    client = relationship("User")
+
+
+class Proposal(Base):
+    __tablename__ = "proposals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    freelancer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount = Column(Float, nullable=True)
+    duration_days = Column(Integer, nullable=True)
+    cover_message = Column(Text, nullable=True)
+    score = Column(Integer, nullable=True)
+
+    project = relationship("Project")
+    freelancer = relationship("User")

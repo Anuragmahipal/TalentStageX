@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.db import init_db
 
 from src.routers import auth
+from src.routers import profile
+from src.routers import projects
 
 app = FastAPI(title="TalentStageX API")
 
@@ -15,6 +17,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(profile.router, prefix="", tags=["profile"])
+app.include_router(projects.router, prefix="", tags=["projects"])
 
 @app.on_event("startup")
 async def on_startup():

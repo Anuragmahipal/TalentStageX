@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import Sidebar from "@/components/Sidebar";
+import { AuthProvider } from "@/context/AuthContext";
+import SidebarClient from "@/components/SidebarClient";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -37,12 +38,9 @@ export default function RootLayout({
             <div className="font-heading text-lg font-semibold">TalentStage</div>
           </div>
         </header>
-        <div className="flex">
-          <Sidebar />
-          <main className="flex-1">
-            {children}
-          </main>
-        </div>
+        <AuthProvider>
+          <SidebarClient>{children}</SidebarClient>
+        </AuthProvider>
       </body>
     </html>
   );
