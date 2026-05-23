@@ -1,7 +1,27 @@
 // ═══════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════
-const API = 'http://localhost:8000';
+// ── API base resolution (priority order):
+//   1. <meta name="api-url"> injected by Next.js layout (recommended for SSR)
+//   2. window.__API_URL__ set by a _document.js / env script tag
+//   3. NEXT_PUBLIC_API_URL baked in at build time via next.config
+//   4. Relative /api proxy (requires Next.js rewrites or same-origin deploy)
+//   5. Hard-coded localhost fallback (dev only)
+const API = (() => {
+  // 1. Meta tag set by Next.js layout
+  const meta = document.querySelector('meta[name="api-url"]');
+  if (meta && meta.content) return meta.content.replace(/\/$/, '');
+  // 2. Runtime window global (set by a <script> in _document or layout)
+  if (typeof window.__API_URL__ === 'string' && window.__API_URL__) return window.__API_URL__.replace(/\/$/, '');
+  // 3. Env var baked in at build (Next.js replaces this at build time)
+  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  // 4. Same-origin /api proxy (works when backend is behind the same domain)
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return window.location.origin + '/api';
+  }
+  // 5. Local dev fallback
+  return 'http://localhost:8000';
+})();
 let currentUser = null;
 let currentToken = null;
 let currentPage = 'dashboard';
@@ -98,16 +118,12 @@ async function doLogin(){
       localStorage.setItem('ts_token', data.access_token);
       showApp();
     } else {
-      throw new Error('Login failed');
+      let msg = 'Invalid email or password.';
+      try{ const err = await res.json(); msg = err.detail || err.message || msg; }catch(_){}
+      showToast(msg, 'error');
     }
   } catch(e){
-    // Demo: create mock user
-    currentUser = {id:1,name:email.split('@')[0].replace(/[^a-z]/gi,' ').trim()||'Demo User',email,role:'freelancer'};
-    currentToken = 'demo-token';
-    localStorage.setItem('ts_user',JSON.stringify(currentUser));
-    localStorage.setItem('ts_token','demo-token');
-    showToast('Signed in as demo user','success');
-    showApp();
+    showToast('Could not reach the server. Check your connection or try the demo.', 'error');
   } finally {
     btn.textContent='Sign in'; btn.disabled=false;
   }
@@ -128,21 +144,12 @@ async function doSignup(){
       document.getElementById('login-email').value = email;
       showAuth('login');
     } else {
-      const err = await res.json();
-      throw new Error(err.detail||'Signup failed');
+      let msg = 'Signup failed.';
+      try{ const err = await res.json(); msg = err.detail || err.message || msg; }catch(_){}
+      showToast(msg, 'error');
     }
   } catch(e){
-    if(e.message==='Failed to fetch'){
-      // Demo mode
-      currentUser = {id:Date.now(),name,email,role};
-      currentToken = 'demo-token';
-      localStorage.setItem('ts_user',JSON.stringify(currentUser));
-      localStorage.setItem('ts_token','demo-token');
-      showToast('Account created (demo mode)!','success');
-      showApp();
-    } else {
-      showToast(e.message,'error');
-    }
+    showToast('Could not reach the server. Check your connection or try the demo.', 'error');
   } finally {
     btn.textContent='Create account'; btn.disabled=false;
   }
@@ -247,22 +254,56 @@ function nav(page){
 //  DATA LOADING
 // ═══════════════════════════════════════════════════════
 let profileData = null;
+// Tracks whether the backend was unreachable on the last attempt.
+// Used by render functions to show a "demo data" banner instead of silently lying.
+let backendOffline = false;
+
 async function loadProfile(){
+  // Demo sessions get an empty local profile — no server call needed
+  if(currentToken === 'demo-token'){
+    profileData = {user_id:currentUser?.id,title:'',bio:'',hourly_rate:null,completeness_pct:20};
+    updateCompleteness(20);
+    return;
+  }
   try{
     const res = await fetch(API+'/profile',{headers:{'Authorization':'Bearer '+currentToken}});
-    if(res.ok){ profileData = await res.json(); }
-  }catch(e){ /* use defaults */ }
-  if(!profileData && currentUser){
-    profileData = {user_id:currentUser.id,title:'',bio:'',hourly_rate:null,completeness_pct:20};
+    if(res.ok){
+      profileData = await res.json();
+      backendOffline = false;
+    } else if(res.status === 401 || res.status === 403){
+      showToast('Session expired. Please sign in again.', 'error');
+      doLogout();
+      return;
+    } else {
+      backendOffline = false;
+      profileData = {user_id:currentUser?.id,title:'',bio:'',hourly_rate:null,completeness_pct:0};
+      showToast('Could not load profile from server ('+res.status+').', 'error');
+    }
+  }catch(e){
+    backendOffline = true;
+    profileData = {user_id:currentUser?.id,title:'',bio:'',hourly_rate:null,completeness_pct:0};
   }
-  updateCompleteness(profileData?.completeness_pct||20);
+  updateCompleteness(profileData?.completeness_pct||0);
 }
 
 async function loadProjects(){
+  if(currentToken === 'demo-token'){
+    allProjects = MOCK_PROJECTS;
+    backendOffline = true;
+    return;
+  }
   try{
     const res = await fetch(API+'/projects');
-    if(res.ok){ const data = await res.json(); allProjects = data.length ? data : MOCK_PROJECTS; return; }
-  }catch(e){}
+    if(res.ok){
+      const data = await res.json();
+      allProjects = data; // real data — even an empty list is correct
+      backendOffline = false;
+      return;
+    }
+  }catch(e){
+    backendOffline = true;
+  }
+  // Backend unreachable — fall back to mock data
   allProjects = MOCK_PROJECTS;
 }
 
@@ -398,15 +439,23 @@ async function doSubmitProposal(){
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+currentToken},
       body:JSON.stringify({amount:parseFloat(amount),duration_days:parseInt(days),cover_message:cover})
     });
-  }catch(e){}
-  await new Promise(r=>setTimeout(r,900));
-  btn.textContent='Submit Proposal'; btn.disabled=false;
-  closeModal('proposal-modal');
-  document.getElementById('prop-amount').value='';
-  document.getElementById('prop-days').value='';
-  document.getElementById('prop-cover').value='';
-  showToast('Proposal submitted! AI score: '+Math.floor(72+Math.random()*25)+'/100','success');
-  document.getElementById('stat-proposals').textContent = '1';
+    if(!res.ok){
+      let msg = 'Failed to submit proposal (server error '+res.status+').';
+      try{ const err = await res.json(); msg = err.detail || err.message || msg; }catch(_){}
+      showToast(msg, 'error');
+      return;
+    }
+    closeModal('proposal-modal');
+    document.getElementById('prop-amount').value='';
+    document.getElementById('prop-days').value='';
+    document.getElementById('prop-cover').value='';
+    showToast('Proposal submitted! AI score: '+Math.floor(72+Math.random()*25)+'/100','success');
+    document.getElementById('stat-proposals').textContent = '1';
+  }catch(e){
+    showToast('Could not reach the server. Check your connection and try again.', 'error');
+  }finally{
+    btn.textContent='Submit Proposal'; btn.disabled=false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -436,19 +485,34 @@ async function saveProfile(){
   const rate = parseFloat(document.getElementById('prof-rate').value)||null;
   const btn = document.getElementById('save-profile-btn');
   btn.innerHTML='<span class="spinner"></span> Saving…'; btn.disabled=true;
+  let savedToServer = false;
   try{
     const res = await fetch(API+'/profile',{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+currentToken},body:JSON.stringify({title,bio,hourly_rate:rate})});
-    if(res.ok){ profileData = await res.json(); }
-  }catch(e){}
+    if(res.ok){
+      profileData = await res.json();
+      savedToServer = true;
+    } else {
+      let msg = 'Failed to save profile (server error '+res.status+').';
+      try{ const err = await res.json(); msg = err.detail || err.message || msg; }catch(_){}
+      showToast(msg, 'error');
+      btn.textContent='Save changes'; btn.disabled=false;
+      return;
+    }
+  }catch(e){
+    showToast('Could not reach the server. Changes were not saved.', 'error');
+    btn.textContent='Save changes'; btn.disabled=false;
+    return;
+  }
   if(!profileData) profileData={};
   profileData.title=title; profileData.bio=bio; profileData.hourly_rate=rate;
-  // local completeness
-  let pct = 10;
-  if(title) pct+=20; if(bio) pct+=20; if(rate) pct+=10;
-  if(profileSkills.length) pct+=20; if(portfolioItems.length) pct+=20;
-  profileData.completeness_pct = Math.min(100,pct);
+  // local completeness (also used if server returns updated pct)
+  if(!savedToServer || typeof profileData.completeness_pct !== 'number'){
+    let pct = 10;
+    if(title) pct+=20; if(bio) pct+=20; if(rate) pct+=10;
+    if(profileSkills.length) pct+=20; if(portfolioItems.length) pct+=20;
+    profileData.completeness_pct = Math.min(100,pct);
+  }
   updateCompleteness(profileData.completeness_pct);
-  await new Promise(r=>setTimeout(r,600));
   btn.textContent='Save changes'; btn.disabled=false;
   showToast('Profile saved!','success');
 }
@@ -562,11 +626,18 @@ async function doPostProject(){
     if(res.ok){
       const data=await res.json();
       allProjects.unshift({...payload,id:data.id,status:'open'});
+    } else {
+      let msg = 'Failed to post project (server error '+res.status+').';
+      try{ const err = await res.json(); msg = err.detail || err.message || msg; }catch(_){}
+      showToast(msg, 'error');
+      btn.textContent='Post Project →'; btn.disabled=false;
+      return;
     }
   }catch(e){
-    allProjects.unshift({...payload,id:Date.now(),status:'open'});
+    showToast('Could not reach the server. Project was not posted.', 'error');
+    btn.textContent='Post Project →'; btn.disabled=false;
+    return;
   }
-  await new Promise(r=>setTimeout(r,700));
   btn.textContent='Post Project →'; btn.disabled=false;
   showToast('Project posted! Freelancers will start submitting proposals.','success');
   ['pp-title','pp-desc'].forEach(id=>document.getElementById(id).value='');
@@ -639,66 +710,114 @@ function openProposalsView(projectId){
 // ═══════════════════════════════════════════════════════
 //  FREELANCERS
 // ═══════════════════════════════════════════════════════
-function renderFreelancers(){
+// ═══════════════════════════════════════════════════════
+//  DEMO BANNER helper — shown when data is from mock, not server
+// ═══════════════════════════════════════════════════════
+function demoBanner(label){
+  return backendOffline
+    ? `<div style="background:var(--amber-light,#fffbeb);border:1px solid var(--amber,#f59e0b);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;">
+        ⚠ <strong>Demo data</strong> — ${label} (backend offline or demo session)
+       </div>`
+    : '';
+}
+
+// ═══════════════════════════════════════════════════════
+//  FREELANCERS  — tries GET /freelancers, falls back to mock
+// ═══════════════════════════════════════════════════════
+async function renderFreelancers(){
   if(!isClient()){
     nav('projects');
     return;
   }
   const el = document.getElementById('freelancers-list');
-  el.innerHTML = MOCK_FREELANCERS.map(f=>`
+  el.innerHTML = '<div class="text-muted text-sm" style="padding:20px">Loading…</div>';
+
+  let freelancers = null;
+  if(!backendOffline && currentToken !== 'demo-token'){
+    try{
+      const res = await fetch(API+'/freelancers',{headers:{'Authorization':'Bearer '+currentToken}});
+      if(res.ok) freelancers = await res.json();
+    }catch(e){ /* fall through to mock */ }
+  }
+
+  const usingMock = !freelancers;
+  if(usingMock) freelancers = MOCK_FREELANCERS;
+
+  el.innerHTML = (usingMock ? demoBanner('showing sample freelancers') : '') +
+    (freelancers.length === 0
+      ? '<div class="empty-state"><h3>No freelancers yet</h3><p>Freelancers will appear here once they create profiles.</p></div>'
+      : freelancers.map(f=>`
     <div class="fl-card">
       <div class="fl-card-top">
-        <div class="fl-avatar">${f.name.split(' ').map(w=>w[0]).join('')}</div>
+        <div class="fl-avatar">${(f.name||'?').split(' ').map(w=>w[0]).join('')}</div>
         <div style="flex:1">
-          <div class="fl-name">${f.name}</div>
-          <div class="fl-title">${f.title}</div>
+          <div class="fl-name">${f.name||'—'}</div>
+          <div class="fl-title">${f.title||f.role||'Freelancer'}</div>
           <div class="rating mt-1">
             <span class="star">★</span>
-            <span class="fw-600">${f.rating}</span>
-            <span class="text-muted text-xs">(${f.reviews} reviews)</span>
+            <span class="fw-600">${f.rating||'—'}</span>
+            <span class="text-muted text-xs">(${f.reviews||0} reviews)</span>
           </div>
         </div>
-        <div class="fl-rate">$${f.rate}/hr</div>
+        <div class="fl-rate">${f.rate||f.hourly_rate ? '$'+(f.rate||f.hourly_rate)+'/hr' : '—'}</div>
       </div>
-      <div class="text-sm text-muted mb-2">${f.location}</div>
-      <div class="fl-skills">${f.skills.map(s=>`<span class="badge badge-gray">${s}</span>`).join('')}</div>
+      <div class="text-sm text-muted mb-2">${f.location||''}</div>
+      <div class="fl-skills">${(f.skills||[]).map(s=>`<span class="badge badge-gray">${s}</span>`).join('')}</div>
       <div class="flex gap-2 mt-3">
         <button class="btn btn-secondary btn-sm" style="flex:1" onclick="showToast('Message sent to ${f.name}!','success')">Message</button>
         <button class="btn btn-ghost btn-sm" onclick="showToast('${f.name} bookmarked!','success')">♡</button>
       </div>
     </div>
-  `).join('');
+  `).join(''));
 }
 
 // ═══════════════════════════════════════════════════════
-//  CONTRACTS
+//  CONTRACTS  — tries GET /contracts, falls back to mock
 // ═══════════════════════════════════════════════════════
-function renderContracts(){
+async function renderContracts(){
   const el = document.getElementById('contracts-list');
-  if(!MOCK_CONTRACTS.length){ el.innerHTML='<div class="empty-state"><h3>No contracts yet</h3><p>Hire a freelancer or get hired to create your first contract.</p></div>'; return; }
-  el.innerHTML = MOCK_CONTRACTS.map(c=>`
+  el.innerHTML = '<div class="text-muted text-sm" style="padding:20px">Loading…</div>';
+
+  let contracts = null;
+  if(!backendOffline && currentToken !== 'demo-token'){
+    try{
+      const res = await fetch(API+'/contracts',{headers:{'Authorization':'Bearer '+currentToken}});
+      if(res.ok) contracts = await res.json();
+    }catch(e){ /* fall through to mock */ }
+  }
+
+  const usingMock = !contracts;
+  if(usingMock) contracts = MOCK_CONTRACTS;
+
+  if(!contracts.length){
+    el.innerHTML='<div class="empty-state"><h3>No contracts yet</h3><p>Hire a freelancer or get hired to create your first contract.</p></div>';
+    return;
+  }
+
+  el.innerHTML = (usingMock ? demoBanner('showing sample contracts') : '') +
+    contracts.map(c=>`
     <div class="card mb-3">
       <div class="flex-between mb-3">
         <div>
-          <div class="proj-title mb-1">${c.project}</div>
-          <div class="text-sm text-muted">${c.client} · ${c.freelancer}</div>
+          <div class="proj-title mb-1">${c.project||c.title||'Contract'}</div>
+          <div class="text-sm text-muted">${c.client||''} · ${c.freelancer||''}</div>
         </div>
         <div class="text-right">
-          <span class="badge badge-green mb-1">${c.status}</span>
-          <div class="proj-budget mt-1">$${c.amount}</div>
+          <span class="badge badge-green mb-1">${c.status||'active'}</span>
+          <div class="proj-budget mt-1">$${c.amount||c.budget||0}</div>
         </div>
       </div>
       <div class="mb-3">
-        <div class="flex-between text-sm mb-2"><span class="fw-600">Milestone: ${c.milestone}</span><span class="text-muted">${c.milestone_pct}%</span></div>
-        <div class="progress-bar"><div class="progress-fill" style="width:${c.milestone_pct}%"></div></div>
+        <div class="flex-between text-sm mb-2"><span class="fw-600">Milestone: ${c.milestone||'In progress'}</span><span class="text-muted">${c.milestone_pct||0}%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${c.milestone_pct||0}%"></div></div>
       </div>
       <div class="workspace">
         <div>
           <div class="card-title mb-2 text-sm">Messages</div>
           <div class="msg-list">
-            <div class="msg recv"><div class="msg-sender">${c.client}</div>Hey, how are the wireframes coming along?</div>
+            <div class="msg recv"><div class="msg-sender">${c.client||'Client'}</div>Hey, how are the wireframes coming along?</div>
             <div class="msg sent"><div class="msg-sender">You</div>Going great! Should have the first draft ready by tomorrow.</div>
-            <div class="msg recv"><div class="msg-sender">${c.client}</div>Perfect. Looking forward to the review!</div>
+            <div class="msg recv"><div class="msg-sender">${c.client||'Client'}</div>Perfect. Looking forward to the review!</div>
           </div>
           <div class="flex gap-2">
             <input id="msg-${c.id}" placeholder="Type a message…" style="flex:1"/>
@@ -709,17 +828,17 @@ function renderContracts(){
           <div class="card mb-3" style="padding:14px">
             <div class="card-title mb-2 text-sm">Milestones</div>
             <div class="flex-between text-sm mb-2">
-              <span>${c.milestone}</span>
+              <span>${c.milestone||'In progress'}</span>
               <span class="badge badge-amber">In progress</span>
             </div>
             <div class="flex gap-2 mt-3">
               <button class="btn btn-secondary btn-sm" onclick="showToast('Work submitted!','success')">Submit Work</button>
-              <button class="btn btn-primary btn-sm" onclick="showToast('Payment of $${Math.round(c.amount*0.9)} released (10% fee deducted)!','success')">Release $${Math.round(c.amount*0.9)}</button>
+              <button class="btn btn-primary btn-sm" onclick="showToast('Payment of $${Math.round((c.amount||0)*0.9)} released (10% fee deducted)!','success')">Release $${Math.round((c.amount||0)*0.9)}</button>
             </div>
           </div>
           <div class="card" style="padding:14px">
-            <div class="text-sm text-muted">Deadline: ${c.deadline}</div>
-            <div class="text-sm text-muted mt-1">Platform fee: 10% = $${Math.round(c.amount*0.1)}</div>
+            <div class="text-sm text-muted">Deadline: ${c.deadline||'—'}</div>
+            <div class="text-sm text-muted mt-1">Platform fee: 10% = $${Math.round((c.amount||0)*0.1)}</div>
           </div>
         </div>
       </div>
@@ -734,39 +853,65 @@ function sendMsg(id){
 }
 
 // ═══════════════════════════════════════════════════════
-//  COMMUNITY
+//  COMMUNITY  — tries GET /community/posts, falls back to mock
 // ═══════════════════════════════════════════════════════
-function renderCommunity(){
-  communityPosts = [...MOCK_COMMUNITY];
+async function renderCommunity(){
+  const feedEl = document.getElementById('community-feed');
+  if(feedEl) feedEl.innerHTML = '<div class="text-muted text-sm" style="padding:20px">Loading…</div>';
+
+  let fetchedPosts = null;
+  if(!backendOffline && currentToken !== 'demo-token'){
+    try{
+      const res = await fetch(API+'/community/posts',{headers:{'Authorization':'Bearer '+currentToken}});
+      if(res.ok) fetchedPosts = await res.json();
+    }catch(e){ /* fall through to mock */ }
+  }
+
+  const usingMock = !fetchedPosts;
+  communityPosts = usingMock ? [...MOCK_COMMUNITY] : fetchedPosts;
+
+  // Persist mock banner state for renderFeed
+  window._communityUsingMock = usingMock;
   renderFeed();
-  // Top contributors
-  document.getElementById('top-contributors').innerHTML = MOCK_FREELANCERS.slice(0,3).map(f=>`
+
+  // Top contributors — try API first
+  let contributors = null;
+  if(!backendOffline && currentToken !== 'demo-token'){
+    try{
+      const res = await fetch(API+'/community/contributors',{headers:{'Authorization':'Bearer '+currentToken}});
+      if(res.ok) contributors = await res.json();
+    }catch(e){}
+  }
+  if(!contributors) contributors = MOCK_FREELANCERS.slice(0,3);
+
+  document.getElementById('top-contributors').innerHTML = contributors.map(f=>`
     <div class="flex gap-2">
-      <div class="fl-avatar" style="width:32px;height:32px;font-size:12px">${f.name.split(' ').map(w=>w[0]).join('')}</div>
-      <div><div style="font-size:13px;font-weight:600">${f.name}</div><div class="text-xs text-muted">${f.location}</div></div>
+      <div class="fl-avatar" style="width:32px;height:32px;font-size:12px">${(f.name||'?').split(' ').map(w=>w[0]).join('')}</div>
+      <div><div style="font-size:13px;font-weight:600">${f.name||'—'}</div><div class="text-xs text-muted">${f.location||''}</div></div>
     </div>
   `).join('');
 }
 function renderFeed(){
   const catColor={general:'badge-gray',tip:'badge-green',showcase:'badge-blue',question:'badge-amber'};
-  document.getElementById('community-feed').innerHTML = communityPosts.map(p=>`
+  const banner = window._communityUsingMock ? demoBanner('showing sample posts') : '';
+  document.getElementById('community-feed').innerHTML = banner + communityPosts.map(p=>`
     <div class="post-card">
       <div class="post-header">
-        <div class="fl-avatar" style="width:38px;height:38px;font-size:13px">${p.avatar}</div>
+        <div class="fl-avatar" style="width:38px;height:38px;font-size:13px">${p.avatar||'?'}</div>
         <div>
-          <div class="fw-600 text-sm">${p.author}</div>
-          <div class="post-meta">${p.time} · <span class="badge ${catColor[p.cat?.toLowerCase()]||'badge-gray'}" style="font-size:10px;padding:2px 7px">${p.cat}</span></div>
+          <div class="fw-600 text-sm">${p.author||'Unknown'}</div>
+          <div class="post-meta">${p.time||''} · <span class="badge ${catColor[p.cat?.toLowerCase()]||'badge-gray'}" style="font-size:10px;padding:2px 7px">${p.cat||''}</span></div>
         </div>
       </div>
-      <div class="post-content">${p.content}</div>
+      <div class="post-content">${p.content||''}</div>
       <div class="post-actions">
         <div class="post-action" onclick="likePost(${p.id},this)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-          <span>${p.likes}</span>
+          <span>${p.likes||0}</span>
         </div>
         <div class="post-action">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-          <span>${p.comments} comments</span>
+          <span>${p.comments||0} comments</span>
         </div>
       </div>
     </div>
@@ -777,16 +922,55 @@ function likePost(id, el){
   if(post){ post.likes++; renderFeed(); }
 }
 function openNewPost(){ openModal('post-modal'); }
-function doNewPost(){
+async function doNewPost(){
   const content = document.getElementById('new-post-content').value.trim();
   const cat = document.getElementById('new-post-cat').value;
   if(!content){ showToast('Write something first!','error'); return; }
-  const catLabel = {general:'General',tip:'Tip',showcase:'Showcase',question:'Question'}[cat];
-  communityPosts.unshift({id:Date.now(),author:currentUser?.name||'You',avatar:(currentUser?.name||'U').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(),content,cat:catLabel,likes:0,comments:0,time:'Just now'});
+  const catLabel = {general:'General',tip:'Tip',showcase:'Showcase',question:'Question'}[cat]||cat;
+  const btn = document.getElementById('post-submit-btn');
+  if(btn){ btn.innerHTML='<span class="spinner"></span> Posting…'; btn.disabled=true; }
+
+  let savedToServer = false;
+  if(!backendOffline && currentToken !== 'demo-token'){
+    try{
+      const res = await fetch(API+'/community/posts',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+currentToken},
+        body:JSON.stringify({content,category:cat})
+      });
+      if(res.ok){
+        const data = await res.json();
+        communityPosts.unshift(data);
+        savedToServer = true;
+      } else {
+        let msg = 'Could not publish post (server error '+res.status+').';
+        try{ const err = await res.json(); msg = err.detail||err.message||msg; }catch(_){}
+        showToast(msg, 'error');
+        if(btn){ btn.textContent='Post'; btn.disabled=false; }
+        return;
+      }
+    }catch(e){
+      showToast('Could not reach the server. Post was not saved.', 'error');
+      if(btn){ btn.textContent='Post'; btn.disabled=false; }
+      return;
+    }
+  }
+
+  if(!savedToServer){
+    // Demo or offline: add locally only
+    communityPosts.unshift({
+      id:Date.now(),
+      author:currentUser?.name||'You',
+      avatar:(currentUser?.name||'U').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(),
+      content,cat:catLabel,likes:0,comments:0,time:'Just now'
+    });
+  }
+
   renderFeed();
   document.getElementById('new-post-content').value='';
   closeModal('post-modal');
-  showToast('Post published!','success');
+  if(btn){ btn.textContent='Post'; btn.disabled=false; }
+  showToast(savedToServer ? 'Post published!' : 'Post added locally (demo mode).','success');
 }
 
 // ═══════════════════════════════════════════════════════

@@ -6,6 +6,27 @@
 <title>TalentStageX</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/static/css/style.css" />
+<script>
+  // Resolve API base URL from (priority order):
+  // 1. ?apiUrl= query param injected by Next.js TalentStageStaticApp
+  // 2. Parent window __API_URL__ (same-origin only, safe check)
+  // 3. Meta tag (future SSR injection point)
+  // 4. Same-origin /api proxy for non-localhost deploys
+  // 5. Dev fallback
+  (function() {
+    var q = new URLSearchParams(window.location.search).get('apiUrl');
+    if (q) { window.__API_URL__ = decodeURIComponent(q); return; }
+    try {
+      var p = window.parent;
+      if (p && p.__API_URL__) { window.__API_URL__ = p.__API_URL__; return; }
+    } catch(e) {}
+    var h = window.location.hostname;
+    if (h && h !== 'localhost' && h !== '127.0.0.1') {
+      window.__API_URL__ = window.location.origin + '/api';
+    }
+    // else leave undefined; app.js will fall through to localhost:8000
+  })();
+</script>
 </head>
 <body>
 
