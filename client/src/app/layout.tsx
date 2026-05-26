@@ -1,21 +1,17 @@
-import type { Metadata } from "next";
-import "./globals.css";
+"use client";
 import { AuthProvider } from "@/context/AuthContext";
-import { ToastProvider } from "@/components/Toast";
+// import AppShell from "@/components/AppShell";
+import "./globals.css";
+import AppShell from "@/components/AppShell";
 
-export const metadata: Metadata = {
-  title: "TalentStageX",
-  description: "Freelance marketplace for creative and technical talent.",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
         <AuthProvider>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
+          <AppShell>
+          {children}
+          </AppShell>
         </AuthProvider>
       </body>
     </html>

@@ -3,12 +3,6 @@ const getApiBase = () => {
   if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
   }
-  if (typeof window !== "undefined") {
-    const h = window.location.hostname;
-    if (h !== "localhost" && h !== "127.0.0.1") {
-      return window.location.origin + "/api";
-    }
-  }
   return "http://localhost:8000";
 };
 
@@ -21,6 +15,7 @@ export async function apiFetch(path: string, options?: RequestInit, token?: stri
     ...(options?.headers as Record<string, string> || {}),
   };
   const res = await fetch(API + path, { ...options, headers });
+  console.log(`fetched ${API+path} with options`, options, "got response", res);
   return res;
 }
 

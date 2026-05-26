@@ -20,16 +20,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("ts_user");
-      const t = localStorage.getItem("ts_token");
-      if (raw) setUserState(JSON.parse(raw));
-      if (t) setTokenState(t);
-    } catch {
-      setUserState(null);
-      setTokenState(null);
+    const init = async() => {
+      try {
+        const raw = localStorage.getItem("ts_user");
+        const t = localStorage.getItem("ts_token");
+        if (raw) setUserState(JSON.parse(raw));
+        if (t) setTokenState(t);
+      } catch {
+        setUserState(null);
+        setTokenState(null);
+      }
+      setInitialized(true);
     }
-    setInitialized(true);
+    init();
   }, []);
 
   function setUser(u: User) {
