@@ -1,7 +1,7 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-type User = { id: number; name: string; email: string; role: string } | null;
+export type User = { id: number; name: string; email: string; role: string } | null;
 
 type AuthContextValue = {
   user: User;
@@ -20,19 +20,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const setauth = async () => {
-      try {
-        const raw = localStorage.getItem("ts_user");
-        const t = localStorage.getItem("ts_token");
-        if (raw) setUserState(JSON.parse(raw));
-        if (t) setTokenState(t);
-      } catch {
-        setUserState(null);
-        setTokenState(null);
-      }
-      setInitialized(true);
-    };
-    setauth();
+    try {
+      const raw = localStorage.getItem("ts_user");
+      const t = localStorage.getItem("ts_token");
+      if (raw) setUserState(JSON.parse(raw));
+      if (t) setTokenState(t);
+    } catch {
+      setUserState(null);
+      setTokenState(null);
+    }
+    setInitialized(true);
   }, []);
 
   function setUser(u: User) {
