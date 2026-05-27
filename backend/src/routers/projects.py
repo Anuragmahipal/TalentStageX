@@ -47,6 +47,8 @@ def _serialize_project(project: Project) -> ProjectOut:
         skills=_parse_skills(project.skills),
         budget_min=project.budget_min,
         budget_max=project.budget_max,
+        deadline=project.deadline,
+        project_type=project.project_type or "fixed",
         status=project.status,
     )
 
@@ -178,6 +180,8 @@ async def create_project(payload: ProjectCreate, current=Depends(get_current_use
         skills=json.dumps(payload.skills or []),
         budget_min=payload.budget_min,
         budget_max=payload.budget_max,
+        deadline=payload.deadline,
+        project_type=payload.project_type,
     )
     db.add(p)
     await db.commit()

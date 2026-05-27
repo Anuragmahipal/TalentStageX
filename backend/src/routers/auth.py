@@ -97,6 +97,7 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         "success": True,
         "data": {
             "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role},
+            "access_token": access_token,
             "token_type": "bearer",
             "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         },
@@ -141,6 +142,7 @@ async def refresh(response: Response, request: Request, db: AsyncSession = Depen
         "success": True,
         "data": {
             "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role},
+            "access_token": access_token,
             "token_type": "bearer",
             "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         },

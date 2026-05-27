@@ -27,10 +27,11 @@ export default function SignupPage() {
         router.push("/auth/login");
       } else {
         let msg = "Signup failed.";
-        try { const err = await res.json(); msg = err.detail || err.message || msg; } catch (_) {}
+        try { const err = await res.json(); msg = err.detail || err.message || msg; } catch (err) { console.error("Error parsing signup response", err); }
         showToast(msg, "error");
       }
-    } catch {
+    } catch (err) {
+      console.error("Error signing up", err);
       showToast("Could not reach the server.", "error");
     } finally {
       setLoading(false);

@@ -26,6 +26,8 @@ class Profile(Base):
     photo_url = Column(Text, nullable=True)
     skills = Column(Text, nullable=True)
     portfolio_items = Column(Text, nullable=True)
+    rating = Column(Float, nullable=True)
+    total_earnings = Column(Float, default=0.0)
     completeness_pct = Column(Integer, default=0)
 
     user = relationship("User", back_populates="profile")
@@ -41,6 +43,8 @@ class Project(Base):
     skills = Column(Text, nullable=True)
     budget_min = Column(Integer, nullable=True)
     budget_max = Column(Integer, nullable=True)
+    deadline = Column(DateTime(timezone=True), nullable=True)
+    project_type = Column(String(16), default="fixed")
     status = Column(String(32), default="open")
 
     client = relationship("User")
@@ -218,3 +222,35 @@ class RefreshToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
+
+
+class SavedFreelancer(Base):
+    __tablename__ = "saved_freelancers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    freelancer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    client = relationship("User", foreign_keys=[client_id])
+    freelancer = relationship("User", foreign_keys=[freelancer_id])
+
+
+class StripeCheckoutSession(Base):
+    __tablename__ = "stripe_checkout_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String(128), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id"), nullable=True, index=True)
+    milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True, index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(8), nullable=False, default="usd")
+    status = Column(String(32), default="created")
+    checkout_url = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")
+    contract = relationship("Contract")
+    milestone = relationship("Milestone")

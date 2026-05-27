@@ -14,9 +14,14 @@ export async function apiFetch(path: string, options?: RequestInit, token?: stri
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options?.headers as Record<string, string> || {}),
   };
-  const res = await fetch(API + path, { ...options, headers });
+  const res = await fetch(API + path, { ...options, headers, credentials: "include" });
   console.log(`fetched ${API+path} with options`, options, "got response", res);
   return res;
+}
+
+async function readApiData<T>(res: Response): Promise<T> {
+  const json = await res.json();
+  return (json?.data ?? json) as T;
 }
 
 // ─── Mock data (same as legacy app.js) ───────────────────────────────────────
@@ -38,12 +43,132 @@ export const MOCK_FREELANCERS = [
   { id: 15, name: "Omar Hassan", title: "DevOps Engineer", rate: 72, rating: 4.7, skills: ["Docker", "Kubernetes", "AWS", "Terraform"], location: "Cairo, EG", reviews: 23 },
 ];
 
-export const MOCK_COMMUNITY = [
-  { id: 1, author: "Priya Sharma", avatar: "PS", content: "Just shipped my 50th project on TalentStageX! Huge thanks to the community for the support. Key lesson: always clarify scope BEFORE accepting.", cat: "Showcase", likes: 38, comments: 12, time: "2h ago" },
-  { id: 2, author: "Carlos Mendez", avatar: "CM", content: "Pro tip: When writing proposals, start with a 1-line summary of THEIR problem, not your experience. Conversion rate went from 15% to 40% for me.", cat: "Tip", likes: 94, comments: 27, time: "5h ago" },
-  { id: 3, author: "Aisha Williams", avatar: "AW", content: "Working on a design system for a fintech client — anyone have experience charging for design system work? Is it better to bill per component or as a package?", cat: "Question", likes: 12, comments: 18, time: "1d ago" },
+// Demo users for offline/demo flows
+export const MOCK_USERS = [
+  { id: 998, name: "Demo Client", email: "demo.client@talentstage.io", role: "client" },
+  { id: 999, name: "Demo Freelancer", email: "demo.freelancer@talentstage.io", role: "freelancer" },
 ];
 
 export const MOCK_CONTRACTS = [
-  { id: 1, project: "Mobile App UI/UX Design", client: "TechStartup Ltd.", freelancer: "Aisha Williams", amount: 1200, status: "active", milestone: "Wireframes", milestone_pct: 60, deadline: "Jun 15, 2026" },
+  { id: 1, project: "Mobile App UI/UX Design", client: "Demo Client", freelancer: "Demo Freelancer", amount: 1200, status: "active", milestone: "Wireframes", milestone_pct: 60, deadline: "Jun 15, 2026", payments: [{ id: 1, amount: 1200, commission_amount: 120, freelancer_amount: 1080, status: "pending", paid_date: null }], milestones: [{ id: 1, description: "Wireframes", amount: 1200, completed_bool: false }] },
 ];
+
+// ─── Freelancers ──────────────────────────────────────────────────────────────
+
+export async function fetchFreelancers(token: string | null) {
+  const res = await apiFetch("/freelancers", undefined, token);
+  if (!res.ok) throw new Error("Failed to load freelancers");
+  return readApiData(res);
+}
+
+// ─── Saved freelancers ────────────────────────────────────────────────────────
+
+export async function fetchSavedFreelancers(token: string | null) {
+  const res = await apiFetch("/saved-freelancers", undefined, token);
+  if (!res.ok) throw new Error("Failed to load saved freelancers");
+  return readApiData(res);
+}
+
+export async function saveFreelancer(freelancerId: number, token: string | null) {
+  const res = await apiFetch(`/saved-freelancers/${freelancerId}`, { method: "POST" }, token);
+  return res;
+}
+
+export async function unsaveFreelancer(freelancerId: number, token: string | null) {
+  const res = await apiFetch(`/saved-freelancers/${freelancerId}`, { method: "DELETE" }, token);
+  return res;
+}
+
+export async function checkSaved(freelancerId: number, token: string | null) {
+  const res = await apiFetch(`/saved-freelancers/check/${freelancerId}`, undefined, token);
+  if (!res.ok) return false;
+  const json = await res.json();
+  return json.data?.saved ?? false;
+}
+
+// ─── AI ───────────────────────────────────────────────────────────────────────
+
+export async function generateBrief(prompt: string, token: string | null) {
+  const res = await apiFetch("/ai/brief", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  }, token);
+  if (!res.ok) {
+    let msg = "Brief generation failed";
+    try { const e = await res.json(); msg = e.error?.message ?? msg; } catch (err) { console.error("Error parsing AI brief response", err); }
+    throw new Error(msg);
+  }
+  return readApiData(res);
+}
+
+export async function matchFreelancers(projectId: number, token: string | null) {
+  const res = await apiFetch(`/ai/match/${projectId}`, { method: "POST" }, token);
+  if (!res.ok) {
+    let msg = "Matching failed";
+    try { const e = await res.json(); msg = e.error?.message ?? msg; } catch (err) { console.error("Error parsing AI match response", err); }
+    throw new Error(msg);
+  }
+  return readApiData(res);
+}
+
+// ─── Verification ─────────────────────────────────────────────────────────────
+
+export async function fetchVerificationStatus(token: string | null) {
+  const res = await apiFetch("/verification/status", undefined, token);
+  if (!res.ok) return null;
+  return readApiData(res);
+}
+
+export async function submitVerification(
+  payload: { proof_url?: string; verification_method?: string },
+  token: string | null,
+) {
+  const res = await apiFetch("/verification/submit", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+  return res;
+}
+
+export async function fetchContracts(token: string | null) {
+  const res = await apiFetch("/contracts", undefined, token);
+  if (!res.ok) throw new Error("Failed to load contracts");
+  return readApiData(res);
+}
+
+export async function fetchEarnings(token: string | null) {
+  const res = await apiFetch("/earnings", undefined, token);
+  if (!res.ok) throw new Error("Failed to load earnings");
+  return readApiData(res);
+}
+
+export async function createStripePaymentSession(payload: {
+  contract_id?: number;
+  milestone_id?: number;
+  amount?: number;
+  currency?: string;
+}, token: string | null) {
+  const res = await apiFetch("/payments/stripe/session", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, token);
+  if (!res.ok) {
+    let msg = "Failed to create payment session";
+    try { const e = await res.json(); msg = e.error?.message ?? e.detail ?? msg; } catch (err) { console.error("Error parsing payment session response", err); }
+    throw new Error(msg);
+  }
+  return readApiData(res);
+}
+
+export async function confirmStripePaymentSession(sessionId: string, token: string | null) {
+  const res = await apiFetch("/payments/stripe/confirm", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId }),
+  }, token);
+  if (!res.ok) {
+    let msg = "Failed to confirm payment session";
+    try { const e = await res.json(); msg = e.error?.message ?? e.detail ?? msg; } catch (err) { console.error("Error parsing payment confirmation response", err); }
+    throw new Error(msg);
+  }
+  return readApiData(res);
+}

@@ -32,7 +32,11 @@ async def init_db():
                 add_column_if_missing("profiles", "photo_url", "photo_url TEXT")
                 add_column_if_missing("profiles", "skills", "skills TEXT")
                 add_column_if_missing("profiles", "portfolio_items", "portfolio_items TEXT")
+                add_column_if_missing("profiles", "rating", "rating DOUBLE PRECISION")
+                add_column_if_missing("profiles", "total_earnings", "total_earnings DOUBLE PRECISION DEFAULT 0")
                 add_column_if_missing("proposals", "status", "status VARCHAR(32) NOT NULL DEFAULT 'submitted'")
+                add_column_if_missing("projects", "deadline", "deadline TIMESTAMP WITH TIME ZONE")
+                add_column_if_missing("projects", "project_type", "project_type VARCHAR(16) NOT NULL DEFAULT 'fixed'")
                 add_column_if_missing("contracts", "completed_at", "completed_at TIMESTAMP WITH TIME ZONE")
 
             await conn.run_sync(ensure_schema)

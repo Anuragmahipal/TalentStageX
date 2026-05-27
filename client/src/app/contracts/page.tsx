@@ -2,9 +2,24 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
-import { apiFetch, MOCK_CONTRACTS } from "@/lib/api";
+import { apiFetch, MOCK_CONTRACTS, createStripePaymentSession, confirmStripePaymentSession } from "@/lib/api";
 
-type Contract = { id: number; project?: string; title?: string; client?: string; freelancer?: string; amount?: number; budget?: number; status?: string; milestone?: string; milestone_pct?: number; deadline?: string };
+type Contract = {
+  id: number;
+  project?: string;
+  title?: string;
+  client?: string;
+  freelancer?: string;
+  amount?: number;
+  budget?: number;
+  status?: string;
+  milestone?: string;
+  milestone_pct?: number;
+  deadline?: string;
+  total_amount?: number;
+  payments?: Array<{ id: number; amount: number; commission_amount: number; freelancer_amount: number; status: string; paid_date?: string | null }>;
+  milestones?: Array<{ id: number; description: string; amount: number; completed_bool?: boolean; approved_bool?: boolean }>;
+};
 
 export default function ContractsPage() {
   const { token } = useAuth();
@@ -12,12 +27,17 @@ export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [offline, setOffline] = useState(false);
   const [msgs, setMsgs] = useState<Record<number, string>>({});
+  const [paymentLoadingId, setPaymentLoadingId] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await apiFetch("/contracts", undefined, token);
-        if (res.ok) { setContracts(await res.json()); return; }
+        if (res.ok) {
+          const json = await res.json();
+          setContracts(json.data ?? json);
+          return;
+        }
       } catch { /* fall through */ }
       setContracts(MOCK_CONTRACTS);
       setOffline(true);
@@ -29,6 +49,28 @@ export default function ContractsPage() {
     if (!msgs[id]?.trim()) return;
     showToast("Message sent!", "success");
     setMsgs(prev => ({ ...prev, [id]: "" }));
+  }
+
+  async function releasePayment(contract: Contract) {
+    if (offline) {
+      showToast("Payment actions require the live backend.", "error");
+      return;
+    }
+    setPaymentLoadingId(contract.id);
+    try {
+      const milestoneId = contract.milestones?.[0]?.id;
+      const amount = contract.payments?.[0]?.amount ?? contract.total_amount ?? contract.amount ?? contract.budget ?? 0;
+      const session = await createStripePaymentSession({ contract_id: contract.id, milestone_id: milestoneId, amount }, token);
+      const sessionObj = session as { session_id?: string };
+      if (!sessionObj.session_id) throw new Error("Invalid payment session");
+      await confirmStripePaymentSession(sessionObj.session_id, token);
+      showToast("Dummy Stripe payment completed.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Payment failed";
+      showToast(message, "error");
+    } finally {
+      setPaymentLoadingId(null);
+    }
   }
 
   if (contracts.length === 0 && !offline) {
@@ -52,11 +94,11 @@ export default function ContractsPage() {
         </div>
       )}
       <div className="space-y-4">
-        {contracts.map(c => {
+        {contracts.map((c, idx) => {
           const amount = c.amount ?? c.budget ?? 0;
           const pct = c.milestone_pct ?? 0;
           return (
-            <div key={c.id} className="rounded-xl border border-border bg-card p-5">
+            <div key={`contract-${c.id ?? idx}`} className="rounded-xl border border-border bg-card p-5">
               <div className="mb-4 flex items-start justify-between">
                 <div>
                   <h3 className="font-semibold">{c.project ?? c.title ?? "Contract"}</h3>
@@ -88,7 +130,7 @@ export default function ContractsPage() {
                       { from: "You", text: "Going great! Should have the first draft ready by tomorrow.", sent: true },
                       { from: c.client ?? "Client", text: "Perfect. Looking forward to the review!", sent: false },
                     ].map((m, i) => (
-                      <div key={i} className={`flex flex-col ${m.sent ? "items-end" : ""}`}>
+                      <div key={`${c.id ?? idx}-msg-${i}`} className={`flex flex-col ${m.sent ? "items-end" : ""}`}>
                         <div className="text-xs font-medium text-muted-foreground">{m.from}</div>
                         <div className={`mt-0.5 max-w-xs rounded-lg px-3 py-1.5 text-xs
                           ${m.sent ? "bg-primary text-primary-foreground" : "bg-background border border-border"}`}>
@@ -118,9 +160,9 @@ export default function ContractsPage() {
                     <div className="flex gap-2">
                       <button onClick={() => showToast("Work submitted!", "success")}
                         className="flex-1 rounded-md border border-border py-1.5 text-xs font-medium hover:bg-muted">Submit Work</button>
-                      <button onClick={() => showToast(`Payment of $${Math.round(amount * 0.9)} released (10% fee deducted)!`, "success")}
+                      <button onClick={() => releasePayment(c)} disabled={paymentLoadingId === c.id}
                         className="flex-1 rounded-md bg-primary py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-                        Release ${Math.round(amount * 0.9)}
+                          {paymentLoadingId === c.id ? "Processing…" : `Release $${Math.round(amount * 0.9)}`}
                       </button>
                     </div>
                   </div>

@@ -52,7 +52,6 @@ export default function SettingsPage() {
             {[
               { label: "New proposals on my projects", defaultChecked: true },
               { label: "Contract updates and milestone approvals", defaultChecked: true },
-              { label: "Community mentions", defaultChecked: false },
               { label: "Marketing emails", defaultChecked: true },
             ].map(n => (
               <label key={n.label} className="flex cursor-pointer items-center gap-3 text-sm">

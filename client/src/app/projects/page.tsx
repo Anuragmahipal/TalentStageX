@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
 import { apiFetch, MOCK_PROJECTS } from "@/lib/api";
 
-type Project = { id: number; title: string; description?: string | null; budget_min?: number | null; budget_max?: number | null; status?: string; skills?: string[] };
+type Project = { id: number; title: string; description?: string | null; budget_min?: number | null; budget_max?: number | null; status?: string; skills?: string[]; project_type?: string; deadline?: string | null };
 
 export default function ProjectsPage() {
   const { user, token } = useAuth();
@@ -23,7 +23,11 @@ export default function ProjectsPage() {
     async function load() {
       try {
         const res = await apiFetch("/projects");
-        if (res.ok) { setProjects(await res.json()); return; }
+        if (res.ok) {
+          const json = await res.json();
+          setProjects(json.data ?? json);
+          return;
+        }
       } catch { /* fall through */ }
       setProjects(MOCK_PROJECTS);
       setOffline(true);
@@ -42,9 +46,9 @@ export default function ProjectsPage() {
     if (!bid || !cover) { showToast("Bid amount and cover letter are required", "error"); return; }
     setSubmitting(true);
     try {
-      const res = await apiFetch("/proposals", {
+      const res = await apiFetch(`/projects/${modalProject?.id}/proposal`, {
         method: "POST",
-        body: JSON.stringify({ project_id: modalProject?.id, amount: Number(bid), duration_days: Number(days), cover_letter: cover }),
+        body: JSON.stringify({ amount: Number(bid), duration_days: Number(days), cover_message: cover }),
       }, token);
       if (res.ok) {
         showToast("Proposal submitted!", "success");

@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/Toast";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, fetchVerificationStatus, submitVerification } from "@/lib/api";
+import type { VerificationStatus } from "@/lib/types";
 
 type PortfolioItem = { id: number; title: string; category: string; description: string; tools: string; url?: string };
 
@@ -22,6 +23,13 @@ export default function ProfilePage() {
   const [portTitle, setPortTitle] = useState(""); const [portCat, setPortCat] = useState("Web Development");
   const [portDesc, setPortDesc] = useState(""); const [portTools, setPortTools] = useState(""); const [portUrl, setPortUrl] = useState("");
 
+  // Verification state
+  const [verif, setVerif] = useState<VerificationStatus | null>(null);
+  const [showVerifModal, setShowVerifModal] = useState(false);
+  const [verifProofUrl, setVerifProofUrl] = useState("");
+  const [verifMethod, setVerifMethod] = useState("linkedin");
+  const [verifSubmitting, setVerifSubmitting] = useState(false);
+
   useEffect(() => {
     async function load() {
       if (token === "demo-token") { setPct(20); return; }
@@ -29,9 +37,14 @@ export default function ProfilePage() {
         const res = await apiFetch("/profile", undefined, token);
         if (res.ok) {
           const d = await res.json();
-          setTitle(d.title ?? ""); setBio(d.bio ?? ""); setRate(d.hourly_rate ?? "");
-          setSkills(d.skills ?? []); setPortfolio(d.portfolio ?? []); setPct(d.completeness_pct ?? 0);
+          const profileData = d.data ?? d;
+          setTitle(profileData.title ?? ""); setBio(profileData.bio ?? ""); setRate(profileData.hourly_rate ?? "");
+          setSkills(profileData.skills ?? []); setPortfolio(profileData.portfolio_items ?? []); setPct(profileData.completeness_pct ?? 0);
         }
+      } catch { /* offline */ }
+      try {
+        const vs = await fetchVerificationStatus(token);
+        setVerif(vs);
       } catch { /* offline */ }
     }
     load();
@@ -53,9 +66,36 @@ export default function ProfilePage() {
         method: "PUT",
         body: JSON.stringify({ title, bio, hourly_rate: Number(rate), availability: avail, skills }),
       }, token);
-      if (res.ok) { const d = await res.json(); setPct(d.completeness_pct ?? pct); showToast("Profile saved!", "success"); }
-      else showToast("Failed to save profile.", "error");
+      if (res.ok) {
+        const d = await res.json();
+        const profileData = d.data ?? d;
+        setPct(profileData.completeness_pct ?? pct);
+        showToast("Profile saved!", "success");
+      } else showToast("Failed to save profile.", "error");
     } catch { showToast("Server unreachable.", "error"); } finally { setSaving(false); }
+  }
+
+  async function handleVerifSubmit() {
+    setVerifSubmitting(true);
+    try {
+      const res = await submitVerification({ proof_url: verifProofUrl || undefined, verification_method: verifMethod }, token);
+      if (res.ok) {
+        const d = await res.json();
+        const reqData = d.data;
+        setVerif(prev => ({
+          user_id: prev?.user_id ?? user?.id ?? 0,
+          verified: reqData.status === "approved",
+          pending_request: reqData.status === "pending",
+          latest_status: reqData.status,
+          submitted_at: reqData.created_at,
+        }));
+        setShowVerifModal(false);
+        showToast(reqData.status === "approved" ? "Verification approved! Your profile is now verified." : "Verification request submitted — pending review.", "success");
+      } else {
+        const e = await res.json();
+        showToast(e.error?.message ?? "Verification failed", "error");
+      }
+    } catch { showToast("Server unreachable", "error"); } finally { setVerifSubmitting(false); }
   }
 
   function addPortfolio() {
@@ -65,6 +105,9 @@ export default function ProfilePage() {
     setShowPortModal(false);
     showToast("Portfolio item added!", "success");
   }
+
+  const isVerified = verif?.verified ?? false;
+  const isPending = verif?.pending_request ?? false;
 
   return (
     <div>
@@ -171,11 +214,27 @@ export default function ProfilePage() {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Add title, bio, skills & portfolio to reach 100%</p>
           </div>
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-2 text-sm font-semibold">Verification</div>
-            <p className="mb-3 text-xs text-muted-foreground">Verify your identity to build client trust.</p>
-            <button onClick={() => showToast("Identity verification coming soon!", "info")}
-              className="w-full rounded-md border border-border py-1.5 text-xs font-medium hover:bg-muted">Verify Identity</button>
+
+          {/* Verification panel */}
+          <div className={`rounded-xl border p-4 ${isVerified ? "border-green-200 bg-green-50" : isPending ? "border-amber-200 bg-amber-50" : "border-border bg-card"}`}>
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              {isVerified ? <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white text-[10px]">✓</span> Verified</> :
+               isPending ? <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white text-[10px]">⏳</span> Pending Review</> :
+               <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px]">?</span> Not Verified</>}
+            </div>
+            {isVerified ? (
+              <p className="text-xs text-green-700">Your identity is verified. This badge is shown to clients on your profile and proposals.</p>
+            ) : isPending ? (
+              <p className="text-xs text-amber-700">Your verification request is under review. We&apos;ll update your status soon.</p>
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-muted-foreground">Verify your identity to build client trust and stand out in search results.</p>
+                <button onClick={() => setShowVerifModal(true)}
+                  className="w-full rounded-md bg-primary py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                  Verify Identity
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -212,6 +271,43 @@ export default function ProfilePage() {
             <button onClick={addPortfolio}
               className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
               Add to Portfolio
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Verification modal */}
+      {showVerifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setShowVerifModal(false)}>
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-bold">Identity Verification</h2>
+              <button onClick={() => setShowVerifModal(false)} className="text-xl text-muted-foreground">×</button>
+            </div>
+            <p className="mb-4 text-sm text-muted-foreground">Provide a link to your professional profile or identity document to verify your account.</p>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium">Verification method</label>
+              <select value={verifMethod} onChange={e => setVerifMethod(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none">
+                <option value="linkedin">LinkedIn profile</option>
+                <option value="github">GitHub profile</option>
+                <option value="government_id">Government ID (URL to scan)</option>
+                <option value="portfolio_url">Portfolio website</option>
+                <option value="self_attestation">Self attestation (no proof)</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium">Proof URL (optional)</label>
+              <input value={verifProofUrl} onChange={e => setVerifProofUrl(e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder="https://linkedin.com/in/yourprofile" />
+            </div>
+            <div className="mb-4 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              For MVP, verification is auto-approved. In production, our team will review your submission within 1-2 business days.
+            </div>
+            <button onClick={handleVerifSubmit} disabled={verifSubmitting}
+              className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              {verifSubmitting ? "Submitting…" : "Submit for Verification"}
             </button>
           </div>
         </div>

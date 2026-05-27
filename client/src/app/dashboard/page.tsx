@@ -2,15 +2,16 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { apiFetch, MOCK_PROJECTS } from "@/lib/api";
+import { apiFetch, MOCK_PROJECTS, fetchContracts, fetchEarnings } from "@/lib/api";
 
-type ProfileData = { completeness_pct?: number; title?: string };
+type ProfileData = { completeness_pct?: number; title?: string; rating?: number | null; total_earnings?: number };
 
 export default function DashboardPage() {
   const { user, token } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [recentProjects, setRecentProjects] = useState(MOCK_PROJECTS.slice(0, 3));
   const [offline, setOffline] = useState(false);
+  const [stats, setStats] = useState({ totalEarned: 0, activeContracts: 0, activeProposals: 0 });
 
   useEffect(() => {
     async function load() {
@@ -21,14 +22,32 @@ export default function DashboardPage() {
       }
       try {
         const res = await apiFetch("/profile", undefined, token);
-        if (res.ok) setProfile(await res.json());
+        if (res.ok) {
+          const json = await res.json();
+          setProfile(json.data ?? json);
+        }
         else setProfile({ completeness_pct: 0 });
       } catch { setOffline(true); setProfile({ completeness_pct: 0 }); }
 
       try {
         const res = await apiFetch("/projects");
-        if (res.ok) setRecentProjects(await res.json());
+        if (res.ok) {
+          const json = await res.json();
+          setRecentProjects((json.data ?? json).slice(0, 3));
+        }
       } catch { /* use mock */ }
+
+      try {
+        const [contracts, earnings] = await Promise.all([
+          fetchContracts(token),
+          fetchEarnings(token),
+        ]);
+        setStats({
+          totalEarned: earnings?.total_earned ?? 0,
+          activeContracts: contracts.filter((c: { status?: string }) => c.status === "active").length,
+          activeProposals: 0,
+        });
+      } catch { /* keep zeroes */ }
     }
     load();
   }, [token]);
@@ -61,9 +80,9 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="mb-6 grid grid-cols-4 gap-4">
         {[
-          { label: "Total Earned", value: "—", sub: "from contracts" },
-          { label: "Active Proposals", value: "—", sub: "awaiting review" },
-          { label: "Active Contracts", value: "—", sub: "" },
+            { label: "Total Earned", value: `$${Math.round(stats.totalEarned)}`, sub: "from contracts" },
+            { label: "Active Proposals", value: `${stats.activeProposals}`, sub: "awaiting review" },
+            { label: "Active Contracts", value: `${stats.activeContracts}`, sub: "" },
           { label: "Profile Score", value: `${pct}%`, sub: "" },
         ].map(s => (
           <div key={s.label} className="rounded-xl border border-border bg-card p-4">

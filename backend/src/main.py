@@ -11,6 +11,11 @@ from src.routers import contracts
 from src.routers import profile
 from src.routers import projects
 from src.routers import skills
+from src.routers import ai as ai_router
+from src.routers import freelancers as freelancers_router
+from src.routers import payments as payments_router
+from src.routers import saved_freelancers as saved_freelancers_router
+from src.routers import verification as verification_router
 
 app = FastAPI(title="TalentStageX API")
 
@@ -32,6 +37,11 @@ app.include_router(profile.router, prefix="", tags=["profile"])
 app.include_router(projects.router, prefix="", tags=["projects"])
 app.include_router(skills.router, prefix="", tags=["skills"])
 app.include_router(contracts.router, prefix="", tags=["contracts"])
+app.include_router(ai_router.router, prefix="", tags=["ai"])
+app.include_router(freelancers_router.router, prefix="", tags=["freelancers"])
+app.include_router(payments_router.router, prefix="", tags=["payments"])
+app.include_router(saved_freelancers_router.router, prefix="", tags=["saved-freelancers"])
+app.include_router(verification_router.router, prefix="", tags=["verification"])
 
 
 def _redirect_for_status(status_code: int) -> str | None:

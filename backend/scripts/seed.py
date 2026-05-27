@@ -3,6 +3,7 @@ Run with: python -m backend.scripts.seed (from repo root) or `python backend/scr
 """
 import asyncio
 import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -98,7 +99,16 @@ async def run():
         res = await db.execute(select(Project).where(Project.client_id == u2.id))
         project = res.scalar_one_or_none()
         if not project:
-            project = Project(client_id=u2.id, title="Landing page refresh", description="Modernize landing page using Next.js", skills='["Next.js", "React", "Tailwind"]', budget_min=500, budget_max=1500)
+            project = Project(
+                client_id=u2.id,
+                title="Landing page refresh",
+                description="Modernize landing page using Next.js",
+                skills='["Next.js", "React", "Tailwind"]',
+                budget_min=500,
+                budget_max=1500,
+                deadline=datetime.now(timezone.utc) + timedelta(days=14),
+                project_type="fixed",
+            )
             db.add(project)
             await db.commit()
             await db.refresh(project)

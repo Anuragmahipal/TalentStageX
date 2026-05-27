@@ -24,26 +24,33 @@ export default function LoginPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user);
-        setToken(data.access_token);
+        const authData = data.data ?? data;
+        setUser(authData.user);
+        setToken(authData.access_token ?? null);
         router.push("/dashboard");
       } else {
         let msg = "Invalid email or password.";
-        try { const err = await res.json(); msg = err.detail || err.message || msg; } catch (_) {}
+        try { const err = await res.json(); msg = err.detail || err.message || msg; } catch (err) { console.error("Error parsing login response", err); }
         showToast(msg, "error");
       }
-    } catch {
+    } catch (err) {
+      console.error("Error logging in", err);
       showToast("Could not reach the server. Check your connection or try the demo.", "error");
     } finally {
       setLoading(false);
     }
   }
 
-  function guestDemo() {
-    const demoUser = { id: 999, name: "Demo Freelancer", email: "demo@talentstage.io", role: "freelancer" };
-    setUser(demoUser);
-    setToken("demo-token");
-    router.push("/dashboard");
+  function demoAs(role: "freelancer" | "client") {
+    if (role === "freelancer") {
+      setUser({ id: 999, name: "Demo Freelancer", email: "demo.freelancer@talentstage.io", role: "freelancer" });
+      setToken("demo-freelancer-token");
+      router.push("/dashboard");
+    } else {
+      setUser({ id: 998, name: "Demo Client", email: "demo.client@talentstage.io", role: "client" });
+      setToken("demo-client-token");
+      router.push("/dashboard");
+    }
   }
 
   return (
@@ -76,9 +83,10 @@ export default function LoginPage() {
             <Link href="/auth/signup" className="text-primary underline-offset-2 hover:underline">Create one →</Link>
           </p>
           <p className="mt-2 text-center text-xs">
-            <button onClick={guestDemo} className="text-muted-foreground hover:text-foreground">
-              Continue as guest (demo)
-            </button>
+            <div className="flex justify-center gap-2">
+              <button onClick={() => demoAs("freelancer")} className="text-muted-foreground hover:text-foreground">Continue as demo freelancer</button>
+              <button onClick={() => demoAs("client")} className="text-muted-foreground hover:text-foreground">Continue as demo client</button>
+            </div>
           </p>
         </div>
       </div>
