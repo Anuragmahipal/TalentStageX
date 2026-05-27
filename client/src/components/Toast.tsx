@@ -1,19 +1,38 @@
 "use client";
-import React, { useEffect } from "react";
-import { CheckCircle, XCircle } from "lucide-react";
+import React, { createContext, useContext, useState, useCallback } from "react";
 
-export default function Toast({ message, type, onDismiss }: { message: string; type?: string; onDismiss?: () => void }) {
-  useEffect(() => {
-    if (!onDismiss) return;
-    const t = setTimeout(onDismiss, 3500);
-    return () => clearTimeout(t);
-  }, [onDismiss]);
+type ToastType = "success" | "error" | "info";
+interface Toast { id: number; msg: string; type: ToastType; }
+
+const ToastCtx = createContext<{ showToast: (msg: string, type?: ToastType) => void }>({ showToast: () => {} });
+
+let _counter = 0;
+
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = useCallback((msg: string, type: ToastType = "info") => {
+    const id = ++_counter;
+    setToasts(prev => [...prev, { id, msg, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3300);
+  }, []);
+
   return (
-    <div className={`fixed top-6 right-6 z-50 rounded-md px-4 py-2 shadow ${type === "success" ? "bg-green-600 text-white" : type === "error" ? "bg-rose-600 text-white" : "bg-muted-foreground text-card-foreground"}`}>
-      <div className="flex items-center gap-2">
-        <span>{type === "success" ? <CheckCircle size={18} /> : <XCircle size={18} />}</span>
-        <span className="text-sm">{message}</span>
+    <ToastCtx.Provider value={{ showToast }}>
+      {children}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map(t => (
+          <div key={t.id} className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-lg transition-all
+            ${t.type === "success" ? "bg-green-600 text-white" : t.type === "error" ? "bg-red-600 text-white" : "bg-gray-800 text-white"}`}>
+            <span>{t.type === "success" ? "✓" : t.type === "error" ? "✕" : "ℹ"}</span>
+            <span>{t.msg}</span>
+          </div>
+        ))}
       </div>
-    </div>
+    </ToastCtx.Provider>
   );
+}
+
+export function useToast() {
+  return useContext(ToastCtx);
 }

@@ -1,122 +1,317 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { Card, CardContent } from "@/components/ui/card";
-import CompletenessBar from "@/components/CompletenessBar";
-import type { Profile } from "@/lib/types";
+import { useToast } from "@/components/Toast";
+import { apiFetch, fetchVerificationStatus, submitVerification } from "@/lib/api";
+import type { VerificationStatus } from "@/lib/types";
+
+type PortfolioItem = { id: number; title: string; category: string; description: string; tools: string; url?: string };
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, token } = useAuth();
+  const { showToast } = useToast();
+  const [title, setTitle] = useState("");
+  const [bio, setBio] = useState("");
+  const [rate, setRate] = useState("");
+  const [avail, setAvail] = useState("available");
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState("");
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [showPortModal, setShowPortModal] = useState(false);
+  const [portTitle, setPortTitle] = useState(""); const [portCat, setPortCat] = useState("Web Development");
+  const [portDesc, setPortDesc] = useState(""); const [portTools, setPortTools] = useState(""); const [portUrl, setPortUrl] = useState("");
 
-  const { token } = useAuth();
+  // Verification state
+  const [verif, setVerif] = useState<VerificationStatus | null>(null);
+  const [showVerifModal, setShowVerifModal] = useState(false);
+  const [verifProofUrl, setVerifProofUrl] = useState("");
+  const [verifMethod, setVerifMethod] = useState("linkedin");
+  const [verifSubmitting, setVerifSubmitting] = useState(false);
 
   useEffect(() => {
     async function load() {
+      if (token === "demo-token") { setPct(20); return; }
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        const res = await fetch(`http://localhost:8000/profile`, { headers });
+        const res = await apiFetch("/profile", undefined, token);
         if (res.ok) {
-          const data = await res.json();
-          setProfile(data);
+          const d = await res.json();
+          const profileData = d.data ?? d;
+          setTitle(profileData.title ?? ""); setBio(profileData.bio ?? ""); setRate(profileData.hourly_rate ?? "");
+          setSkills(profileData.skills ?? []); setPortfolio(profileData.portfolio_items ?? []); setPct(profileData.completeness_pct ?? 0);
         }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+      } catch { /* offline */ }
+      try {
+        const vs = await fetchVerificationStatus(token);
+        setVerif(vs);
+      } catch { /* offline */ }
     }
     load();
   }, [token]);
 
-  async function save() {
-    setSaving(true);
-      try {
-      if (!profile) return;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      await fetch(`http://localhost:8000/profile`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ title: profile.title, bio: profile.bio, hourly_rate: profile.hourly_rate }),
-      });
-      // optimistic UI
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
+  function addSkill(e: React.KeyboardEvent) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const s = skillInput.trim().replace(/,$/, "");
+      if (s && !skills.includes(s)) setSkills(prev => [...prev, s]);
+      setSkillInput("");
     }
   }
 
-  const completeness = profile ? (profile.completeness_pct ?? (60 + (profile.hourly_rate ? 10 : 0))) : 0;
+  async function saveProfile() {
+    setSaving(true);
+    try {
+      const res = await apiFetch("/profile", {
+        method: "PUT",
+        body: JSON.stringify({ title, bio, hourly_rate: Number(rate), availability: avail, skills }),
+      }, token);
+      if (res.ok) {
+        const d = await res.json();
+        const profileData = d.data ?? d;
+        setPct(profileData.completeness_pct ?? pct);
+        showToast("Profile saved!", "success");
+      } else showToast("Failed to save profile.", "error");
+    } catch { showToast("Server unreachable.", "error"); } finally { setSaving(false); }
+  }
+
+  async function handleVerifSubmit() {
+    setVerifSubmitting(true);
+    try {
+      const res = await submitVerification({ proof_url: verifProofUrl || undefined, verification_method: verifMethod }, token);
+      if (res.ok) {
+        const d = await res.json();
+        const reqData = d.data;
+        setVerif(prev => ({
+          user_id: prev?.user_id ?? user?.id ?? 0,
+          verified: reqData.status === "approved",
+          pending_request: reqData.status === "pending",
+          latest_status: reqData.status,
+          submitted_at: reqData.created_at,
+        }));
+        setShowVerifModal(false);
+        showToast(reqData.status === "approved" ? "Verification approved! Your profile is now verified." : "Verification request submitted — pending review.", "success");
+      } else {
+        const e = await res.json();
+        showToast(e.error?.message ?? "Verification failed", "error");
+      }
+    } catch { showToast("Server unreachable", "error"); } finally { setVerifSubmitting(false); }
+  }
+
+  function addPortfolio() {
+    if (!portTitle) { showToast("Title is required", "error"); return; }
+    setPortfolio(prev => [...prev, { id: Date.now(), title: portTitle, category: portCat, description: portDesc, tools: portTools, url: portUrl }]);
+    setPortTitle(""); setPortDesc(""); setPortTools(""); setPortUrl("");
+    setShowPortModal(false);
+    showToast("Portfolio item added!", "success");
+  }
+
+  const isVerified = verif?.verified ?? false;
+  const isPending = verif?.pending_request ?? false;
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl font-heading font-bold">My Profile</h1>
-      <div className="text-sm text-muted-foreground mb-4">Manage your bio, skills, portfolio and rates.</div>
+    <div>
+      <div className="mb-5 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold">My Profile</h1>
+          <p className="text-sm text-muted-foreground">Manage your bio, skills, and portfolio</p>
+        </div>
+        <button onClick={saveProfile} disabled={saving}
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+      </div>
 
-      <Card>
-        <CardContent>
-          {loading ? (
-            <div>Loading...</div>
-          ) : (
-            <div className="grid grid-cols-3 gap-6">
-              <div className="col-span-2">
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1">Name</label>
-                  <div className="text-lg font-semibold">{profile?.name || "—"}</div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1">Title</label>
-                  <input
-                    value={profile?.title || ""}
-                    onChange={(e) => setProfile((prev) => ({ ...(prev ?? {}), title: e.target.value }))}
-                    className="w-full border rounded px-3 py-2"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1">Bio</label>
-                  <textarea
-                    value={profile?.bio || ""}
-                    onChange={(e) => setProfile((prev) => ({ ...(prev ?? {}), bio: e.target.value }))}
-                    className="w-full border rounded px-3 py-2 h-28"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-1">Hourly rate (USD)</label>
-                  <input
-                    value={profile?.hourly_rate ?? ""}
-                    onChange={(e) => setProfile((prev) => ({ ...(prev ?? {}), hourly_rate: Number(e.target.value) }))}
-                    className="w-40 border rounded px-3 py-2"
-                    type="number"
-                  />
-                </div>
-
-                <div>
-                  <button className="btn btn-primary px-4 py-2 rounded bg-primary text-white" onClick={save} disabled={saving}>
-                    {saving ? "Saving..." : "Save Profile"}
-                  </button>
-                </div>
+      <div className="grid grid-cols-3 gap-5">
+        <div className="col-span-2 space-y-4">
+          {/* Basic info */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-4 text-sm font-semibold text-muted-foreground uppercase tracking-wide">Basic Information</h2>
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Full name</label>
+                <input value={user?.name ?? ""} readOnly className="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm" />
               </div>
-
-              <aside className="col-span-1">
-                <div className="mb-4">
-                  <CompletenessBar pct={completeness} />
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  Profile completeness helps you get matched with better projects. Add portfolio items and skills to increase visibility.
-                </div>
-              </aside>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Email</label>
+                <input value={user?.email ?? ""} readOnly className="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm" />
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium">Professional title</label>
+              <input value={title} onChange={e => setTitle(e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder="e.g. Senior React Developer" />
+            </div>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium">Bio</label>
+              <textarea rows={4} value={bio} onChange={e => setBio(e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Describe your expertise and what makes you stand out…" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Hourly rate (USD)</label>
+                <input type="number" value={rate} onChange={e => setRate(e.target.value)}
+                  className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="50" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Availability</label>
+                <select value={avail} onChange={e => setAvail(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none">
+                  <option value="available">Available</option>
+                  <option value="busy">Busy</option>
+                  <option value="not-available">Not available</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Skills */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">Skills</h2>
+            <div className="flex flex-wrap gap-1.5 rounded-md border border-input p-2 min-h-10" onClick={() => document.getElementById("skill-inp")?.focus()}>
+              {skills.map(s => (
+                <span key={s} className="flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                  {s}
+                  <button onClick={() => setSkills(prev => prev.filter(x => x !== s))} className="ml-0.5 opacity-60 hover:opacity-100">×</button>
+                </span>
+              ))}
+              <input id="skill-inp" value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={addSkill}
+                className="flex-1 min-w-24 bg-transparent text-sm outline-none" placeholder="Type a skill and press Enter…" />
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">Press Enter or comma to add. Click × to remove.</p>
+          </div>
+
+          {/* Portfolio */}
+          <div className="rounded-xl border border-border bg-card p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Portfolio</h2>
+              <button onClick={() => setShowPortModal(true)}
+                className="rounded-md border border-border px-3 py-1 text-xs font-medium hover:bg-muted">+ Add work</button>
+            </div>
+            {portfolio.length === 0
+              ? <p className="text-sm text-muted-foreground">No portfolio items yet. Add your previous work!</p>
+              : <div className="space-y-3">{portfolio.map(item => (
+                  <div key={item.id} className="rounded-lg border border-border p-3">
+                    <div className="font-medium text-sm">{item.title}</div>
+                    <div className="text-xs text-muted-foreground">{item.category} · {item.tools}</div>
+                    {item.description && <p className="mt-1 text-xs">{item.description}</p>}
+                  </div>
+                ))}</div>
+            }
+          </div>
+        </div>
+
+        {/* Right panel */}
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-1 text-sm font-semibold">Profile Completeness</div>
+            <div className="mb-2 text-3xl font-bold text-primary">{pct}%</div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Add title, bio, skills & portfolio to reach 100%</p>
+          </div>
+
+          {/* Verification panel */}
+          <div className={`rounded-xl border p-4 ${isVerified ? "border-green-200 bg-green-50" : isPending ? "border-amber-200 bg-amber-50" : "border-border bg-card"}`}>
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              {isVerified ? <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white text-[10px]">✓</span> Verified</> :
+               isPending ? <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white text-[10px]">⏳</span> Pending Review</> :
+               <><span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px]">?</span> Not Verified</>}
+            </div>
+            {isVerified ? (
+              <p className="text-xs text-green-700">Your identity is verified. This badge is shown to clients on your profile and proposals.</p>
+            ) : isPending ? (
+              <p className="text-xs text-amber-700">Your verification request is under review. We&apos;ll update your status soon.</p>
+            ) : (
+              <>
+                <p className="mb-3 text-xs text-muted-foreground">Verify your identity to build client trust and stand out in search results.</p>
+                <button onClick={() => setShowVerifModal(true)}
+                  className="w-full rounded-md bg-primary py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                  Verify Identity
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Portfolio modal */}
+      {showPortModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setShowPortModal(false)}>
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-bold">Add Portfolio Item</h2>
+              <button onClick={() => setShowPortModal(false)} className="text-xl text-muted-foreground">×</button>
+            </div>
+            {[
+              { label: "Project title", val: portTitle, set: setPortTitle, ph: "E-commerce Platform Redesign" },
+              { label: "Description", val: portDesc, set: setPortDesc, ph: "What did you build? What was the outcome?" },
+              { label: "Tools & technologies", val: portTools, set: setPortTools, ph: "e.g. React, Figma, Python" },
+              { label: "Project URL (optional)", val: portUrl, set: setPortUrl, ph: "https://…" },
+            ].map(f => (
+              <div key={f.label} className="mb-3">
+                <label className="mb-1 block text-sm font-medium">{f.label}</label>
+                {f.label === "Description"
+                  ? <textarea rows={3} value={f.val} onChange={e => f.set(e.target.value)} className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={f.ph} />
+                  : <input value={f.val} onChange={e => f.set(e.target.value)} className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" placeholder={f.ph} />
+                }
+              </div>
+            ))}
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium">Category</label>
+              <select value={portCat} onChange={e => setPortCat(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none">
+                {["Web Development","Mobile App","Design","Data Science","Marketing","Other"].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <button onClick={addPortfolio}
+              className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              Add to Portfolio
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Verification modal */}
+      {showVerifModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setShowVerifModal(false)}>
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-bold">Identity Verification</h2>
+              <button onClick={() => setShowVerifModal(false)} className="text-xl text-muted-foreground">×</button>
+            </div>
+            <p className="mb-4 text-sm text-muted-foreground">Provide a link to your professional profile or identity document to verify your account.</p>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-medium">Verification method</label>
+              <select value={verifMethod} onChange={e => setVerifMethod(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none">
+                <option value="linkedin">LinkedIn profile</option>
+                <option value="github">GitHub profile</option>
+                <option value="government_id">Government ID (URL to scan)</option>
+                <option value="portfolio_url">Portfolio website</option>
+                <option value="self_attestation">Self attestation (no proof)</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium">Proof URL (optional)</label>
+              <input value={verifProofUrl} onChange={e => setVerifProofUrl(e.target.value)}
+                className="w-full rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                placeholder="https://linkedin.com/in/yourprofile" />
+            </div>
+            <div className="mb-4 rounded-md bg-muted p-3 text-xs text-muted-foreground">
+              For MVP, verification is auto-approved. In production, our team will review your submission within 1-2 business days.
+            </div>
+            <button onClick={handleVerifSubmit} disabled={verifSubmitting}
+              className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              {verifSubmitting ? "Submitting…" : "Submit for Verification"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,67 +1,95 @@
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/context/AuthContext";
 
 export default function LandingPage() {
+  const { user, initialized } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (initialized && user) router.replace("/dashboard");
+  }, [initialized, user, router]);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-slate-50">
-      <div className="container mx-auto px-6 py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-          <div>
-            <Badge className="mb-4">MVP</Badge>
-            <h1 className="text-4xl font-heading font-bold mb-4">Hire top creative and technical freelancers</h1>
-            <p className="text-muted-foreground mb-6">Post projects, review proposals, and manage milestones with a simple escrow flow. TalentStage is a lightweight marketplace built for demos and developer testing.</p>
+    <div className="min-h-screen bg-background">
+      {/* Nav */}
+      <nav className="flex items-center justify-between border-b border-border px-8 py-4">
+        <div className="text-lg font-bold">TalentStageX</div>
+        <div className="flex gap-3">
+          <Link href="/auth/login"
+            className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            Sign in
+          </Link>
+          <Link href="/auth/signup"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+            Get started →
+          </Link>
+        </div>
+      </nav>
 
-            <div className="flex items-center gap-3">
-              <Link href="/auth/signup">
-                <Button>Get started</Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button variant="ghost">Sign in</Button>
-              </Link>
-              <Link href="/projects" className="ml-auto text-sm text-muted-foreground">Browse projects</Link>
-            </div>
+      {/* Hero */}
+      <div className="mx-auto max-w-6xl px-8 py-20 flex gap-16 items-center">
+        <div className="flex-1">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs text-muted-foreground">
+            <span>★</span> Freelance Marketplace · MVP
           </div>
-
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle>How it works</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Sign up as a Client or Freelancer.</li>
-                  <li>Clients post projects and receive proposals.</li>
-                  <li>Use the contract workspace to manage milestones and releases.</li>
-                </ol>
-              </CardContent>
-            </Card>
+          <h1 className="mb-4 text-5xl font-bold tracking-tight leading-tight">
+            Hire top <span className="text-primary">creative</span>{" & technical talent"}
+          </h1>
+          <p className="mb-8 text-lg text-muted-foreground leading-relaxed">
+            Post projects, review AI-scored proposals, and manage milestones with secure escrow.
+            Built for the next generation of freelance work.
+          </p>
+          <div className="flex gap-3">
+            <Link href="/auth/signup"
+              className="rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              Start for free →
+            </Link>
+            <Link href="/auth/login"
+              className="rounded-md border border-border px-5 py-3 text-sm font-semibold hover:bg-muted">
+              Sign in
+            </Link>
           </div>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent>
-              <h3 className="font-semibold">Profiles & Portfolios</h3>
-              <p className="text-sm text-muted-foreground mt-2">Create rich freelancer profiles and showcase portfolio projects.</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <h3 className="font-semibold">Project Posting</h3>
-              <p className="text-sm text-muted-foreground mt-2">Post fixed or hourly projects, set milestones, and receive proposals.</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <h3 className="font-semibold">Escrow & Contracts</h3>
-              <p className="text-sm text-muted-foreground mt-2">Simulated escrow keeps funds until milestones are approved.</p>
-            </CardContent>
-          </Card>
+        {/* Hero card */}
+        <div className="w-80 rounded-xl border border-border bg-card p-5 shadow-sm">
+          <span className="mb-3 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Open Project</span>
+          <h3 className="mb-2 font-bold">Full-Stack E-Commerce Platform</h3>
+          <p className="mb-3 text-xs text-muted-foreground leading-relaxed">
+            Looking for a React + Node.js developer for a 3-month engagement. Must have experience with payment integrations.
+          </p>
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-primary">$3,000 – $5,000</span>
+            <span className="text-xs text-muted-foreground">Fixed price</span>
+          </div>
+          <div className="mb-4 flex flex-wrap gap-1.5">
+            {["React", "Node.js", "PostgreSQL", "Stripe"].map(s => (
+              <span key={s} className="rounded bg-muted px-2 py-0.5 text-xs">{s}</span>
+            ))}
+          </div>
+          <Link href="/auth/signup"
+            className="block w-full rounded-md bg-primary py-2 text-center text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            Submit Proposal →
+          </Link>
         </div>
+      </div>
+
+      {/* Features */}
+      <div className="mx-auto max-w-6xl px-8 pb-20 grid grid-cols-3 gap-6">
+        {[
+          { icon: "🗂", title: "Rich Portfolios", desc: "Showcase your work with media, links, and tools used. Build a profile that gets noticed." },
+          { icon: "🤖", title: "AI Matching", desc: "Our engine scores proposals for relevance and value — helping clients hire the right person faster." },
+          { icon: "🔒", title: "Secure Escrow", desc: "Milestone-based payments held in escrow, released when you approve. 10% platform commission." },
+        ].map(f => (
+          <div key={f.title} className="rounded-xl border border-border bg-card p-6">
+            <div className="mb-3 text-2xl">{f.icon}</div>
+            <div className="mb-2 font-bold">{f.title}</div>
+            <div className="text-sm text-muted-foreground leading-relaxed">{f.desc}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
