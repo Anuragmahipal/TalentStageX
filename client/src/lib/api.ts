@@ -8,6 +8,8 @@ const getApiBase = () => {
 
 export const API = getApiBase();
 
+import type { VerificationStatus } from "./types";
+
 export async function apiFetch(path: string, options?: RequestInit, token?: string | null) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -51,6 +53,15 @@ export const MOCK_USERS = [
 
 export const MOCK_CONTRACTS = [
   { id: 1, project: "Mobile App UI/UX Design", client: "Demo Client", freelancer: "Demo Freelancer", amount: 1200, status: "active", milestone: "Wireframes", milestone_pct: 60, deadline: "Jun 15, 2026", payments: [{ id: 1, amount: 1200, commission_amount: 120, freelancer_amount: 1080, status: "pending", paid_date: null }], milestones: [{ id: 1, description: "Wireframes", amount: 1200, completed_bool: false }] },
+];
+
+export type Contract = { id?: number; status?: string; project?: string; client?: string; freelancer?: string; amount?: number; [key: string]: unknown };
+
+
+export const MOCK_COMMUNITY = [
+  { id: 1, author: "Demo Freelancer", avatar: "https://example.com/avatar.png", content: "Just shipped a redesign for a SaaS landing page — happy to share learnings!", cat: "wins", likes: 12, comments: 3, timestamp: "2026-05-20T10:00:00Z", time: "2026-05-20T10:00:00Z" },
+  { id: 2, author: "Priya Sharma", avatar: "https://example.com/priya.png", content: "Looking for feedback on my new React component library — any suggestions on accessibility patterns?", cat: "help", likes: 8, comments: 5, timestamp: "2026-05-22T14:30:00Z", time: "2026-05-22T14:30:00Z" },
+  { id: 3, author: "Carlos Mendez", avatar: "https://example.com/carlos.png", content: "Sharing a short guide on integrating FastAPI with Next.js for SSR + API routes.", cat: "resources", likes: 20, comments: 10, timestamp: "2026-05-18T09:15:00Z", time: "2026-05-18T09:15:00Z" },
 ];
 
 // ─── Freelancers ──────────────────────────────────────────────────────────────
@@ -113,10 +124,10 @@ export async function matchFreelancers(projectId: number, token: string | null) 
 
 // ─── Verification ─────────────────────────────────────────────────────────────
 
-export async function fetchVerificationStatus(token: string | null) {
+export async function fetchVerificationStatus(token: string | null): Promise<VerificationStatus | null> {
   const res = await apiFetch("/verification/status", undefined, token);
   if (!res.ok) return null;
-  return readApiData(res);
+  return readApiData<VerificationStatus>(res);
 }
 
 export async function submitVerification(
@@ -130,16 +141,17 @@ export async function submitVerification(
   return res;
 }
 
-export async function fetchContracts(token: string | null) {
+export async function fetchContracts(token: string | null): Promise<Contract[]> {
   const res = await apiFetch("/contracts", undefined, token);
   if (!res.ok) throw new Error("Failed to load contracts");
-  return readApiData(res);
+  return readApiData<Contract[]>(res);
 }
 
-export async function fetchEarnings(token: string | null) {
+export async function fetchEarnings(token: string | null): Promise<{ total_earned?: number }>
+{
   const res = await apiFetch("/earnings", undefined, token);
   if (!res.ok) throw new Error("Failed to load earnings");
-  return readApiData(res);
+  return readApiData<{ total_earned?: number }>(res);
 }
 
 export async function createStripePaymentSession(payload: {
