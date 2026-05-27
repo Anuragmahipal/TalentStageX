@@ -99,17 +99,17 @@ If `DATABASE_URL` is not set, the backend defaults to PostgreSQL on `localhost:5
 - `GET /skills/badges`
 - `GET /skills/attempts`
 
-## Quick Verification
+## Why TalentStageX
 
-```bash
-curl -i http://localhost:8000/api/health
-curl -i -c cookies.txt -H 'Content-Type: application/json' \
-  -d '{"email":"test.freelancer@example.com","password":"password"}' \
-  http://localhost:8000/auth/login
-curl -i -b cookies.txt http://localhost:8000/auth/me
-curl -i -b cookies.txt http://localhost:8000/projects/open
-```
+TalentStageX is crafted to showcase a refined, production-minded freelance marketplace backend in a compact, demo-friendly package. It combines practical engineering choices with extensible architecture to give judges and integrators a clear, compelling story to present.
+
+- Demo-first, production-minded: clean APIs, async patterns, and deterministic placeholders let you demo advanced experiences without depending on external services.
+- Trust and safety focus: session management via `httpOnly` cookies, hashed refresh tokens, and server-side validation protect user flows and demonstrate secure defaults.
+- Developer ergonomics: FastAPI with Pydantic schemas and async SQLAlchemy makes the codebase approachable for rapid extension, testing, and hardening.
+- Demo impact: seeds, curated demo accounts, and focused endpoints enable a short demo script that highlights signing up, creating a profile, posting a project, receiving a proposal, and completing a contract.
+
+This README and codebase are intended to make a strong technical impression at a hackathon or demo day: functional, well-scoped, and easy to extend into production-grade features such as payments, AI matching, and media storage.
 
 ## Project Vision
 
-TalentStageX elevates the freelancer hiring experience by pairing strong identity, portfolio, and skill verification with a streamlined contracting flow. The backend is structured to support AI-assisted matching and scoring while remaining stable and deterministic today. This gives teams a reliable foundation that can scale into deeper marketplace intelligence without reworking the core architecture.
+TalentStageX elevates the freelancer hiring experience by pairing identity, portfolio, and skill verification with a streamlined contract-first workflow. The backend is structured to support future AI-assisted matching and scoring while remaining stable and deterministic today—giving teams a reliable foundation to scale and innovate without reworking the core architecture.
